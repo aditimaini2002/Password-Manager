@@ -1,146 +1,88 @@
-import mysql.connector
-import random
-import string
+import sqlite3
+import hashlib
 import tkinter as tk
-from tkinter import simpledialog, scrolledtext, messagebox
+from tkinter import ttk, messagebox
 
-class PasswordManager:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Password Manager")
-        self.root.geometry("400x400")
+# Connect to the database
+conn = sqlite3.connect('password_manager.db')
+cursor = conn.cursor()
 
-        self.setup_database()
+# Create table to store passwords if it doesn't exist
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS passwords (
+        id INTEGER PRIMARY KEY,
+        website TEXT NOT NULL,
+        username TEXT NOT NULL,
+        password TEXT NOT NULL
+    )
+''')
 
-        self.website_label = tk.Label(root, text="Website:")
-        self.website_entry = tk.Entry(root)
-        self.username_label = tk.Label(root, text="Username:")
-        self.username_entry = tk.Entry(root)
-        self.password_label = tk.Label(root, text="Password:")
-        self.password_entry = tk.Entry(root)
-        self.generate_button = tk.Button(root, text="Generate Password", command=self.generate_password)
-        self.save_button = tk.Button(root, text="Save Password", command=self.save_password)
-        self.view_button = tk.Button(root, text="View Passwords", command=self.view_passwords)
-        self.password_display = scrolledtext.ScrolledText(root, wrap=tk.WORD, width=40, height=10)
+# Function to securely hash the password
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
 
-        self.website_label.pack()
-        self.website_entry.pack()
-        self.username_label.pack()
-        self.username_entry.pack()
-        self.password_label.pack()
-        self.password_entry.pack()
-        self.generate_button.pack()
-        self.save_button.pack()
-        self.view_button.pack()
-        self.password_display.pack()
+# Function to add a password
+def add_password():
+    website = website_entry.get()
+    username = username_entry.get()
+    password = password_entry.get()
+    hashed_password = hash_password(password)
+    
+    cursor.execute('''
+        INSERT INTO passwords (website, username, password)
+        VALUES (?, ?, ?)
+    ''', (website, username, hashed_password))
+    conn.commit()
+    messagebox.showinfo("Success", "Password added successfully.")
 
-    def setup_database(self):
-        try:
-            self.connection = mysql.connector.connect(
-                host="localhost",
-                user="root",
-                password="Phantom@123",
-                database="passwordstorage"
-            )
-            self.cursor = self.connection.cursor()
+# Function to retrieve passwords and usernames for a given website
+def get_password():
+    website = website_entry.get()
 
-            self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS passwords (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                website VARCHAR(255) NOT NULL,
-                username VARCHAR(255) NOT NULL,
-                password VARCHAR(255) NOT NULL
-            )
-            """)
+    cursor.execute('''
+        SELECT username, password FROM passwords
+        WHERE website = ?
+    ''', (website,))
+    results = cursor.fetchall()
 
-            self.connection.close()
-        except Exception as e:
-            self.result_label.config(text="Error: " + str(e))
+    if results:
+        password_list = "\n".join([f"Username: {result[0]}, Password: {result[1]}" for result in results])
+        messagebox.showinfo("Passwords", f"Retrieved passwords for {website}:\n{password_list}")
+    else:
+        messagebox.showwarning("Password not found", "No passwords found for this website.")
 
-    def generate_password(self):
-        password_length = 12
-        characters = string.ascii_letters + string.digits + string.punctuation
-        password = ''.join(random.choice(characters) for i in range(password_length))
-        self.password_entry.delete(0, tk.END)
-        self.password_entry.insert(0, password)
+# GUI Setup
+root = tk.Tk()
+root.title("Password Manager")
 
-    def save_password(self):
-        website = self.website_entry.get()
-        username = self.username_entry.get()
-        password = self.password_entry.get()
+style = ttk.Style()
+style.theme_use("clam")  # Change the theme to your liking
 
-        if not website or not username or not password:
-            self.result_label.config(text="Please fill in all fields")
-            return
+main_frame = ttk.Frame(root, padding="20")
+main_frame.grid(row=0, column=0)
 
-        try:
-            self.connection = mysql.connector.connect(
-                host="localhost",
-                user="root",
-                password="Phantom@123",
-                database="passwordstorage"
-            )
-            self.cursor = self.connection.cursor()
+website_label = ttk.Label(main_frame, text="Website:")
+website_label.grid(row=0, column=0, padx=5, pady=5)
+website_entry = ttk.Entry(main_frame)
+website_entry.grid(row=0, column=1, padx=5, pady=5)
 
-            query = "INSERT INTO passwords (website, username, password) VALUES (%s, %s, %s)"
-            values = (website, username, password)
-            self.cursor.execute(query, values)
-            self.connection.commit()
-            self.connection.close()
-            self.result_label.config(text="Password saved successfully")
+username_label = ttk.Label(main_frame, text="Username:")
+username_label.grid(row=1, column=0, padx=5, pady=5)
+username_entry = ttk.Entry(main_frame)
+username_entry.grid(row=1, column=1, padx=5, pady=5)
 
-        except Exception as e:
-            self.result_label.config(text="Error: " + str(e))
+password_label = ttk.Label(main_frame, text="Password:")
+password_label.grid(row=2, column=0, padx=5, pady=5)
+password_entry = ttk.Entry(main_frame, show="*")
+password_entry.grid(row=2, column=1, padx=5, pady=5)
 
-    def view_passwords(self):
-        self.connection = mysql.connector.connect(
-            host="localhost",
-            user="root",
-            password="Phantom@123",
-            database="passwordstorage"
-        )
-        self.cursor = self.connection.cursor()
+add_button = ttk.Button(main_frame, text="Add Password", command=add_password)
+add_button.grid(row=3, column=0, columnspan=2, padx=5, pady=5, sticky="we")
 
-        self.cursor.execute("SELECT website, username, password FROM passwords")
-        passwords = self.cursor.fetchall()
+get_button = ttk.Button(main_frame, text="Get Passwords", command=get_password)
+get_button.grid(row=4, column=0, columnspan=2, padx=5, pady=5, sticky="we")
 
-        if not passwords:
-            result_label = tk.Label(self.root, text="No passwords found.")
-            result_label.pack()
-        else:
-            view_window = tk.Toplevel(self.root)
-            view_window.title("View Passwords")
-            view_window.geometry("600x400")
+root.mainloop()
 
-            for password in passwords:
-                website = password[0]
-                username = password[1]
-                password_text = password[2]
-
-                password_frame = tk.Frame(view_window)
-                password_frame.pack()
-
-                website_label = tk.Label(password_frame, text=f"Website: {website}")
-                website_label.pack()
-
-                username_label = tk.Label(password_frame, text=f"Username: {username}")
-                username_label.pack()
-
-                password_label = tk.Label(password_frame, text=f"Password: {password_text}")
-                password_label.pack()
-
-        self.connection.close()
-
-    def close_window(self):
-        self.root.destroy()
-
-    def generate_random_password(self):
-        password_length = 12
-        characters = string.ascii_letters + string.digits + string.punctuation
-        password = ''.join(random.choice(characters) for i in range(password_length))
-        return password
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = PasswordManager(root)
-    root.mainloop()
+# Close the connection
+conn.close()
